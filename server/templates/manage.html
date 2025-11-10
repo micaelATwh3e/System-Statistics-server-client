@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Computers - System Stats Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            margin: -20px -20px 20px -20px;
+            text-align: center;
+        }
+        .nav {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .nav a {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            margin: 0 10px;
+            border-radius: 5px;
+        }
+        .nav a:hover {
+            background-color: #2980b9;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        .btn {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn-danger {
+            background-color: #e74c3c;
+        }
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+        .computers-list {
+            margin-top: 20px;
+        }
+        .computer-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .computer-info {
+            flex-grow: 1;
+        }
+        .computer-name {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .computer-url {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            color: white;
+            font-size: 0.8em;
+            margin: 0 10px;
+        }
+        .status-online {
+            background-color: #27ae60;
+        }
+        .status-offline {
+            background-color: #e74c3c;
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .help-text {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Manage Computers</h1>
+    </div>
+
+    <div class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/manage">Manage Computers</a>
+        <a href="/change_password">Change Password</a>
+        <a href="/logout" style="background-color: #e74c3c;">Logout</a>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h2>Add New Computer</h2>
+            <div id="alert-container"></div>
+            <form id="add-computer-form">
+                <div class="form-group">
+                    <label for="name">Computer Name:</label>
+                    <input type="text" id="name" name="name" required>
+                    <div class="help-text">A friendly name to identify this computer</div>
+                </div>
+                <div class="form-group">
+                    <label for="url">URL:</label>
+                    <input type="url" id="url" name="url" required placeholder="http://192.168.1.100:8000">
+                    <div class="help-text">The URL where the client application is running (include port)</div>
+                </div>
+                <div class="form-group">
+                    <label for="token">Token:</label>
+                    <input type="text" id="token" name="token" required>
+                    <div class="help-text">The authentication token from the client application</div>
+                </div>
+                <button type="submit" class="btn">Add Computer</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Current Computers</h2>
+            <div id="computers-list" class="computers-list">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Loading computers...
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Setup Instructions</h2>
+            <ol>
+                <li><strong>Install client on target computer:</strong> Copy the <code>client.py</code> file to the computer you want to monitor.</li>
+                <li><strong>Install dependencies:</strong> Run <code>pip install fastapi uvicorn psutil requests</code> on the target computer.</li>
+                <li><strong>Start the client:</strong> Run <code>uvicorn client:app --host 0.0.0.0 --port 8000</code> on the target computer.</li>
+                <li><strong>Get the token:</strong> The client will print a token when it starts. Copy this token.</li>
+                <li><strong>Add to dashboard:</strong> Use the form above to add the computer with its name, URL, and token.</li>
+            </ol>
+            <p><strong>Note:</strong> Make sure the client computer is accessible from this server and that any firewalls allow the connection.</p>
+        </div>
+    </div>
+
+    <script>
+        function showAlert(message, type) {
+            const alertContainer = document.getElementById('alert-container');
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+            alertContainer.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+            setTimeout(() => {
+                alertContainer.innerHTML = '';
+            }, 5000);
+        }
+
+        function formatLastSeen(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            
+            if (minutes < 1) return 'Just now';
+            if (minutes < 60) return `${minutes} minutes ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours} hours ago`;
+            const days = Math.floor(hours / 24);
+            return `${days} days ago`;
+        }
+
+        async function loadComputers() {
+            try {
+                const response = await fetch('/api/computers');
+                const computers = await response.json();
+
+                const container = document.getElementById('computers-list');
+                
+                if (computers.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 20px; color: #666;">
+                            No computers configured yet. Add one using the form above.
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = computers.map(computer => {
+                    const statusClass = computer.status === 'online' ? 'status-online' : 'status-offline';
+                    return `
+                        <div class="computer-item">
+                            <div class="computer-info">
+                                <div class="computer-name">${computer.name}</div>
+                                <div class="computer-url">${computer.url}</div>
+                                <div style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                                    Last seen: ${formatLastSeen(computer.last_seen)}
+                                </div>
+                            </div>
+                            <div class="status-badge ${statusClass}">
+                                ${computer.status.toUpperCase()}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                document.getElementById('computers-list').innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #e74c3c;">
+                        Error loading computers: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        document.getElementById('add-computer-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = {
+                name: formData.get('name'),
+                url: formData.get('url'),
+                token: formData.get('token')
+            };
+
+            try {
+                const response = await fetch('/api/add_computer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert('Computer added successfully!', 'success');
+                    e.target.reset();
+                    loadComputers();
+                } else {
+                    showAlert(result.error || 'Failed to add computer', 'error');
+                }
+            } catch (error) {
+                showAlert('Network error: ' + error.message, 'error');
+            }
+        });
+
+        // Load computers on page load
+        loadComputers();
+
+        // Refresh every 30 seconds
+        setInterval(loadComputers, 30000);
+    </script>
+</body>
+</html>

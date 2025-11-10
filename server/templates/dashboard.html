@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Stats Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            margin: -20px -20px 20px -20px;
+            text-align: center;
+        }
+        .nav {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .nav a {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            margin: 0 10px;
+            border-radius: 5px;
+        }
+        .nav a:hover {
+            background-color: #2980b9;
+        }
+        .computer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .computer-card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 5px solid #3498db;
+        }
+        .computer-card.offline {
+            border-left-color: #e74c3c;
+        }
+        .computer-card.online {
+            border-left-color: #27ae60;
+        }
+        .computer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .computer-name {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            color: white;
+            font-size: 0.8em;
+        }
+        .status-online {
+            background-color: #27ae60;
+        }
+        .status-offline {
+            background-color: #e74c3c;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .stat-label {
+            font-weight: bold;
+        }
+        .stat-value {
+            color: #666;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #3498db;
+            transition: width 0.3s ease;
+        }
+        .progress-fill.warning {
+            background-color: #f39c12;
+        }
+        .progress-fill.danger {
+            background-color: #e74c3c;
+        }
+        .last-seen {
+            font-size: 0.8em;
+            color: #666;
+            text-align: center;
+            margin-top: 15px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>System Statistics Dashboard</h1>
+    </div>
+
+    <div class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/manage">Manage Computers</a>
+        <a href="/change_password">Change Password</a>
+        <a href="/logout" style="background-color: #e74c3c;">Logout</a>
+    </div>
+
+    <div id="computers-container">
+        <div class="loading">Loading computers...</div>
+    </div>
+
+    <script>
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function getProgressClass(percentage) {
+            if (percentage >= 90) return 'danger';
+            if (percentage >= 70) return 'warning';
+            return '';
+        }
+
+        function formatLastSeen(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            const minutes = Math.floor(diff / 60000);
+            
+            if (minutes < 1) return 'Just now';
+            if (minutes < 60) return `${minutes} minutes ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours} hours ago`;
+            const days = Math.floor(hours / 24);
+            return `${days} days ago`;
+        }
+
+        function createComputerCard(computer, stats) {
+            const statusClass = computer.status === 'online' ? 'online' : 'offline';
+            const statusBadgeClass = computer.status === 'online' ? 'status-online' : 'status-offline';
+            
+            let statsHtml = '';
+            if (stats && computer.status === 'online') {
+                statsHtml = `
+                    <div class="stat-item">
+                        <span class="stat-label">CPU Usage:</span>
+                        <span class="stat-value">${stats.cpu_percent.toFixed(1)}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${getProgressClass(stats.cpu_percent)}" 
+                             style="width: ${stats.cpu_percent}%"></div>
+                    </div>
+
+                    <div class="stat-item">
+                        <span class="stat-label">Memory:</span>
+                        <span class="stat-value">${formatBytes(stats.memory_used)} / ${formatBytes(stats.memory_total)}</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${getProgressClass(stats.memory_percent)}" 
+                             style="width: ${stats.memory_percent}%"></div>
+                    </div>
+
+                    <div class="stat-item">
+                        <span class="stat-label">Disk Usage:</span>
+                        <span class="stat-value">${formatBytes(stats.disk_used)} / ${formatBytes(stats.disk_total)}</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${getProgressClass(stats.disk_percent)}" 
+                             style="width: ${stats.disk_percent}%"></div>
+                    </div>
+
+                    <div class="stat-item">
+                        <span class="stat-label">Network Sent:</span>
+                        <span class="stat-value">${formatBytes(stats.network_bytes_sent)}</span>
+                    </div>
+
+                    <div class="stat-item">
+                        <span class="stat-label">Network Received:</span>
+                        <span class="stat-value">${formatBytes(stats.network_bytes_recv)}</span>
+                    </div>
+                `;
+            } else {
+                statsHtml = '<div class="stat-item">No data available</div>';
+            }
+
+            return `
+                <div class="computer-card ${statusClass}">
+                    <div class="computer-header">
+                        <div class="computer-name">${computer.name}</div>
+                        <div class="status-badge ${statusBadgeClass}">${computer.status.toUpperCase()}</div>
+                    </div>
+                    ${statsHtml}
+                    <div class="last-seen">Last seen: ${formatLastSeen(computer.last_seen)}</div>
+                </div>
+            `;
+        }
+
+        async function loadDashboard() {
+            try {
+                const computersResponse = await fetch('/api/computers');
+                const computers = await computersResponse.json();
+
+                if (computers.length === 0) {
+                    document.getElementById('computers-container').innerHTML = 
+                        '<div class="loading">No computers configured. <a href="/manage">Add computers</a> to start monitoring.</div>';
+                    return;
+                }
+
+                const container = document.getElementById('computers-container');
+                container.innerHTML = '<div class="computer-grid"></div>';
+                const grid = container.querySelector('.computer-grid');
+
+                for (const computer of computers) {
+                    let stats = null;
+                    if (computer.status === 'online') {
+                        try {
+                            const statsResponse = await fetch(`/api/stats/${computer.id}`);
+                            stats = await statsResponse.json();
+                        } catch (e) {
+                            console.log(`Failed to load stats for ${computer.name}: ${e}`);
+                        }
+                    }
+                    
+                    const cardHtml = createComputerCard(computer, stats);
+                    grid.innerHTML += cardHtml;
+                }
+            } catch (error) {
+                document.getElementById('computers-container').innerHTML = 
+                    '<div class="loading">Error loading dashboard: ' + error.message + '</div>';
+            }
+        }
+
+        // Load dashboard on page load
+        loadDashboard();
+
+        // Refresh every 30 seconds
+        setInterval(loadDashboard, 30000);
+    </script>
+</body>
+</html>
