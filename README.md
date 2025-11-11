@@ -8,6 +8,7 @@ A comprehensive distributed system monitoring solution with a centralized Flask 
 - **Web-based Dashboard**: Clean, responsive interface for monitoring multiple computers
 - **User Authentication**: Secure login system with password management
 - **Real-time Monitoring**: Live system statistics with 30-second update intervals
+- **Interactive Network Graphs**: Click any machine to view 24-hour network usage charts
 - **Historical Data**: Track and visualize system performance over time
 - **Computer Management**: Add/remove computers from monitoring
 - **Multi-user Support**: Admin user management with secure password hashing
@@ -17,13 +18,15 @@ A comprehensive distributed system monitoring solution with a centralized Flask 
 - **Cross-platform**: Works on Windows, Linux, and macOS
 - **Persistent Authentication**: Token-based auth with automatic token persistence
 - **Real-time Metrics**: CPU, memory, disk, and network statistics
+- **Network Usage Rates**: Real-time upload/download speed calculation
 - **Secure Communication**: Bearer token authentication for all API calls
 
 ### 📈 Monitored Metrics
 - **CPU Usage**: Real-time processor utilization
 - **Memory**: Total, used, available, and percentage utilization
 - **Disk Space**: Total, used, free space and percentage
-- **Network I/O**: Bytes sent and received counters
+- **Network I/O**: Bytes sent and received counters + real-time usage rates
+- **24-Hour Network Graphs**: Interactive charts showing network activity over time
 - **System Info**: Hostname, OS type, last seen timestamps
 
 ## 🏗️ Architecture
@@ -109,6 +112,26 @@ Dashboard should connect to: http://your-hostname:8000
    - **URL**: `http://client-hostname:8000` (or IP address)
    - **Token**: The token displayed by the client
 
+## 🌐 Network Monitoring Features
+
+### Real-time Network Usage
+- **Upload/Download Rates**: Each computer card displays current network usage in bytes/second
+- **Live Updates**: Network rates refresh every 30 seconds with the rest of the system stats
+- **Formatted Display**: Automatically formats rates in B/s, KB/s, MB/s, or GB/s as appropriate
+
+### 24-Hour Network Graphs
+- **Interactive Charts**: Click any computer card to open a modal with detailed network graphs
+- **Dual Metrics**: View both sent and received data on the same chart
+- **Chart.js Powered**: Professional, responsive charts with hover tooltips
+- **Time-based X-axis**: Shows network activity patterns throughout the day
+- **Automatic Scaling**: Y-axis automatically adjusts to data ranges
+
+### Usage Instructions
+1. **View Current Rates**: Check the dashboard cards for real-time upload/download speeds
+2. **Open Graphs**: Click on any computer card to view the 24-hour network graph
+3. **Analyze Patterns**: Use the graph to identify peak usage times and network trends
+4. **Close Modal**: Click outside the graph or use the X button to close
+
 ## 📖 Detailed Setup
 
 ### Server Configuration
@@ -185,6 +208,8 @@ CREATE TABLE stats (
     disk_percent REAL,
     network_bytes_sent INTEGER,
     network_bytes_recv INTEGER,
+    network_sent_per_sec REAL DEFAULT 0,
+    network_recv_per_sec REAL DEFAULT 0,
     FOREIGN KEY (computer_id) REFERENCES computers (id)
 )
 ```
@@ -201,6 +226,7 @@ CREATE TABLE stats (
 | `/api/computers` | GET | List all computers | Yes |
 | `/api/stats/<id>` | GET | Latest stats for computer | Yes |
 | `/api/history/<id>` | GET | Historical stats | Yes |
+| `/api/network_graph/<id>` | GET | 24-hour network usage data | Yes |
 | `/api/add_computer` | POST | Add new computer | Yes |
 | `/change_password` | GET/POST | Password management | Yes |
 | `/manage` | GET | Computer management page | Yes |
@@ -209,7 +235,20 @@ CREATE TABLE stats (
 
 | Endpoint | Method | Description | Auth Required |
 |----------|--------|-------------|---------------|
-| `/systeminfo` | GET | Current system statistics | Bearer Token |
+| `/systeminfo` | GET | Current system statistics + network rates | Bearer Token |
+
+#### System Info Response Format
+```json
+{
+    "cpu_percent": 15.2,
+    "memory": {"total": 16777216, "used": 8388608, "percent": 50.0},
+    "disk": {"total": 1000000000, "used": 500000000, "percent": 50.0},
+    "network": {"bytes_sent": 1000000, "bytes_recv": 2000000},
+    "network_usage": {"bytes_sent_per_sec": 1024, "bytes_recv_per_sec": 2048},
+    "hostname": "computer-name",
+    "system": "Linux"
+}
+```
 
 ## 🔧 Development
 
@@ -217,6 +256,7 @@ CREATE TABLE stats (
 - Python 3.8+
 - pip
 - Virtual environment (recommended)
+- Modern web browser (for Chart.js network graphs)
 
 ### Running in Development
 
@@ -311,10 +351,24 @@ This project is open source and available under the [MIT License](LICENSE).
 - Check client logs for permission errors
 - Verify client has access to system metrics
 
+**Network graphs not displaying:**
+- Check browser console for JavaScript errors
+- Ensure Chart.js CDN is accessible
+- Verify computer has historical network data (requires 24+ hours)
+- Try refreshing the page or clearing browser cache
+
+**Network usage rates showing as zero:**
+- Allow time for rate calculation (requires multiple data points)
+- Check that psutil can access network interface statistics
+- Restart client if network interface was recently changed
+
 ## 📊 Screenshots
 
 ### Dashboard View
-The main dashboard provides an overview of all monitored systems with real-time status indicators.
+The main dashboard provides an overview of all monitored systems with real-time status indicators and current network usage rates.
+
+### Network Usage Graphs
+Click on any computer card to view interactive 24-hour network usage graphs powered by Chart.js, showing both upload and download activity over time.
 
 ### Computer Management
 Easy addition and management of monitored computers through the web interface.
