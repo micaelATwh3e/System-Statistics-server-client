@@ -170,6 +170,27 @@
             height: 400px;
             margin-top: 20px;
         }
+        
+        .tab-button {
+            background-color: #ecf0f1;
+            color: #2c3e50;
+            border: none;
+            padding: 10px 20px;
+            margin: 0 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .tab-button:hover {
+            background-color: #bdc3c7;
+        }
+        
+        .tab-button.active {
+            background-color: #3498db;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -188,12 +209,25 @@
         <div class="loading">Loading computers...</div>
     </div>
 
-    <!-- Network Graph Modal -->
-    <div id="networkModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeNetworkModal()">&times;</span>
-            <h2 id="modalTitle">Network Usage - 24 Hour Graph</h2>
-            <div class="chart-container">
+    <!-- Performance Graph Modal -->
+    <div id="performanceModal" class="modal">
+        <div class="modal-content" style="max-width: 1200px;">
+            <span class="close" onclick="closePerformanceModal()">&times;</span>
+            <h2 id="modalTitle">System Performance - 24 Hour Graphs</h2>
+            
+            <!-- Tab Navigation -->
+            <div style="text-align: center; margin-bottom: 20px;">
+                <button onclick="showTab('system')" id="systemTab" class="tab-button active">CPU / Memory / Disk</button>
+                <button onclick="showTab('network')" id="networkTab" class="tab-button">Network Usage</button>
+            </div>
+            
+            <!-- System Performance Chart -->
+            <div id="systemChartContainer" class="chart-container" style="display: block;">
+                <canvas id="systemChart"></canvas>
+            </div>
+            
+            <!-- Network Chart -->
+            <div id="networkChartContainer" class="chart-container" style="display: none;">
                 <canvas id="networkChart"></canvas>
             </div>
         </div>
@@ -226,6 +260,20 @@
             if (hours < 24) return `${hours} hours ago`;
             const days = Math.floor(hours / 24);
             return `${days} days ago`;
+        }
+
+        function formatUptime(uptimeSeconds) {
+            const days = Math.floor(uptimeSeconds / 86400);
+            const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+            const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+            
+            if (days > 0) {
+                return `${days}d ${hours}h ${minutes}m`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            } else {
+                return `${minutes}m`;
+            }
         }
 
         function createComputerCard(computer, stats) {
@@ -281,6 +329,11 @@
                         <span class="stat-label">Download Rate:</span>
                         <span class="stat-value">${formatBytes(stats.network_recv_per_sec || 0)}/s</span>
                     </div>
+
+                    <div class="stat-item">
+                        <span class="stat-label">Uptime:</span>
+                        <span class="stat-value">${formatUptime(stats.uptime_seconds || 0)}</span>
+                    </div>
                 `;
             } else {
                 statsHtml = '<div class="stat-item">No data available</div>';
@@ -295,7 +348,7 @@
                     ${statsHtml}
                     <div class="last-seen">Last seen: ${formatLastSeen(computer.last_seen)}</div>
                     <div style="text-align: center; margin-top: 10px; font-size: 0.9em; color: #666;">
-                        Click to view 24h network graph
+                        Click to view 24h performance graphs
                     </div>
                 </div>
             `;
@@ -336,22 +389,32 @@
             }
         }
 
-        // Network graph functionality
+        // Performance graph functionality
+        let systemChart = null;
         let networkChart = null;
+        let currentComputerId = null;
         
         function showNetworkGraph(computerId, computerName) {
-            const modal = document.getElementById('networkModal');
+            currentComputerId = computerId;
+            const modal = document.getElementById('performanceModal');
             const modalTitle = document.getElementById('modalTitle');
             
-            modalTitle.textContent = `Network Usage - ${computerName} (24 Hours)`;
+            modalTitle.textContent = `System Performance - ${computerName} (24 Hours)`;
             modal.style.display = 'block';
             
-            loadNetworkGraph(computerId);
+            // Show system tab by default
+            showTab('system');
+            loadSystemGraph(computerId);
         }
         
-        function closeNetworkModal() {
-            const modal = document.getElementById('networkModal');
+        function closePerformanceModal() {
+            const modal = document.getElementById('performanceModal');
             modal.style.display = 'none';
+            
+            if (systemChart) {
+                systemChart.destroy();
+                systemChart = null;
+            }
             
             if (networkChart) {
                 networkChart.destroy();
@@ -359,12 +422,157 @@
             }
         }
         
+        function showTab(tabName) {
+            // Update tab buttons
+            document.getElementById('systemTab').classList.remove('active');
+            document.getElementById('networkTab').classList.remove('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            // Show/hide chart containers
+            document.getElementById('systemChartContainer').style.display = tabName === 'system' ? 'block' : 'none';
+            document.getElementById('networkChartContainer').style.display = tabName === 'network' ? 'block' : 'none';
+            
+            // Load appropriate chart
+            if (tabName === 'system' && !systemChart) {
+                loadSystemGraph(currentComputerId);
+            } else if (tabName === 'network' && !networkChart) {
+                loadNetworkGraph(currentComputerId);
+            }
+        }
+        
+        async function loadSystemGraph(computerId) {
+            try {
+                const response = await fetch(`/api/history/${computerId}?hours=24`);
+                const data = await response.json();
+                
+                if (!data || data.length === 0) {
+                    const ctx = document.getElementById('systemChart').getContext('2d');
+                    if (systemChart) {
+                        systemChart.destroy();
+                    }
+                    
+                    systemChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: ['No Data'],
+                            datasets: [{
+                                label: 'No data available',
+                                data: [0],
+                                borderColor: '#999',
+                                backgroundColor: 'rgba(153,153,153,0.1)',
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100,
+                                    title: {
+                                        display: true,
+                                        text: 'Percentage (%)'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    return;
+                }
+                
+                const labels = data.map(item => {
+                    const date = new Date(item.timestamp);
+                    return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                });
+                
+                const cpuData = data.map(item => item.cpu_percent);
+                const memoryData = data.map(item => item.memory_percent);
+                const diskData = data.map(item => item.disk_percent);
+                
+                const ctx = document.getElementById('systemChart').getContext('2d');
+                
+                if (systemChart) {
+                    systemChart.destroy();
+                }
+                
+                systemChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'CPU Usage (%)',
+                            data: cpuData,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231,76,60,0.1)',
+                            borderWidth: 2,
+                            fill: false
+                        }, {
+                            label: 'Memory Usage (%)',
+                            data: memoryData,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52,152,219,0.1)',
+                            borderWidth: 2,
+                            fill: false
+                        }, {
+                            label: 'Disk Usage (%)',
+                            data: diskData,
+                            borderColor: '#27ae60',
+                            backgroundColor: 'rgba(39,174,96,0.1)',
+                            borderWidth: 2,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                title: {
+                                    display: true,
+                                    text: 'Percentage (%)'
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        return value + '%';
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading system graph:', error);
+                alert('Error loading system graph: ' + error.message);
+            }
+        }
+
         async function loadNetworkGraph(computerId) {
             try {
                 const response = await fetch(`/api/network_graph/${computerId}`);
-                const data = await response.json();
+                const result = await response.json();
                 
-                if (!data.data || data.data.length === 0) {
+                if (!result.data || result.data.length === 0) {
                     const ctx = document.getElementById('networkChart').getContext('2d');
                     if (networkChart) {
                         networkChart.destroy();
@@ -398,13 +606,13 @@
                     return;
                 }
                 
-                const labels = data.data.map(item => {
+                const labels = result.data.map(item => {
                     const date = new Date(item.timestamp);
                     return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 });
                 
-                const sentData = data.data.map(item => item.sent_per_sec);
-                const recvData = data.data.map(item => item.recv_per_sec);
+                const sentData = result.data.map(item => item.sent_per_sec || 0);
+                const recvData = result.data.map(item => item.recv_per_sec || 0);
                 
                 const ctx = document.getElementById('networkChart').getContext('2d');
                 
@@ -478,9 +686,9 @@
         
         // Close modal when clicking outside of it
         window.onclick = function(event) {
-            const modal = document.getElementById('networkModal');
+            const modal = document.getElementById('performanceModal');
             if (event.target === modal) {
-                closeNetworkModal();
+                closePerformanceModal();
             }
         }
 

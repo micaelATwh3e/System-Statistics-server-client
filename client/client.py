@@ -77,12 +77,18 @@ def get_system_info():
         previous_net_io = current_net_io
         previous_time = current_time
     
+    # Get system uptime
+    boot_time = psutil.boot_time()
+    uptime_seconds = current_time - boot_time
+    
     return {
         "cpu_percent": psutil.cpu_percent(interval=1),
         "memory": psutil.virtual_memory()._asdict(),
         "disk": psutil.disk_usage(disk_path)._asdict(),
         "network": current_net_io._asdict(),
         "network_usage": network_usage_rate,
+        "uptime_seconds": uptime_seconds,
+        "boot_time": boot_time,
         "hostname": platform.node(),
         "system": platform.system()
     }

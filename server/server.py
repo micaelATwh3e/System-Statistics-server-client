@@ -63,6 +63,8 @@ def init_db():
             network_bytes_recv INTEGER,
             network_sent_per_sec REAL DEFAULT 0,
             network_recv_per_sec REAL DEFAULT 0,
+            uptime_seconds REAL DEFAULT 0,
+            boot_time REAL DEFAULT 0,
             FOREIGN KEY (computer_id) REFERENCES computers (id)
         )
     ''')
@@ -75,6 +77,16 @@ def init_db():
     
     try:
         cursor.execute('ALTER TABLE stats ADD COLUMN network_recv_per_sec REAL DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute('ALTER TABLE stats ADD COLUMN uptime_seconds REAL DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+        
+    try:
+        cursor.execute('ALTER TABLE stats ADD COLUMN boot_time REAL DEFAULT 0')
     except sqlite3.OperationalError:
         pass  # Column already exists
     
@@ -158,8 +170,9 @@ def fetch_stats_from_computer(computer_id, url, token):
             INSERT INTO stats (computer_id, cpu_percent, memory_total, memory_used, 
                              memory_percent, disk_total, disk_used, disk_percent,
                              network_bytes_sent, network_bytes_recv, 
-                             network_sent_per_sec, network_recv_per_sec)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             network_sent_per_sec, network_recv_per_sec,
+                             uptime_seconds, boot_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             computer_id,
             data['cpu_percent'],
@@ -172,7 +185,9 @@ def fetch_stats_from_computer(computer_id, url, token):
             data['network']['bytes_sent'],
             data['network']['bytes_recv'],
             network_sent_per_sec,
-            network_recv_per_sec
+            network_recv_per_sec,
+            data.get('uptime_seconds', 0),
+            data.get('boot_time', 0)
         ))
         
         # Update computer status
@@ -305,7 +320,9 @@ def get_computer_stats(computer_id):
             'network_bytes_sent': row[10],
             'network_bytes_recv': row[11],
             'network_sent_per_sec': row[12] if len(row) > 12 else 0,
-            'network_recv_per_sec': row[13] if len(row) > 13 else 0
+            'network_recv_per_sec': row[13] if len(row) > 13 else 0,
+            'uptime_seconds': row[14] if len(row) > 14 else 0,
+            'boot_time': row[15] if len(row) > 15 else 0
         }
     else:
         stats = None
@@ -323,7 +340,8 @@ def get_computer_history(computer_id):
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT timestamp, cpu_percent, memory_percent, disk_percent
+        SELECT timestamp, cpu_percent, memory_percent, disk_percent, 
+               network_sent_per_sec, network_recv_per_sec, uptime_seconds
         FROM stats
         WHERE computer_id = ? AND timestamp > datetime('now', '-{} hours')
         ORDER BY timestamp
@@ -335,7 +353,10 @@ def get_computer_history(computer_id):
             'timestamp': row[0],
             'cpu_percent': row[1],
             'memory_percent': row[2],
-            'disk_percent': row[3]
+            'disk_percent': row[3],
+            'network_sent_per_sec': row[4] if len(row) > 4 else 0,
+            'network_recv_per_sec': row[5] if len(row) > 5 else 0,
+            'uptime_seconds': row[6] if len(row) > 6 else 0
         })
     
     conn.close()
