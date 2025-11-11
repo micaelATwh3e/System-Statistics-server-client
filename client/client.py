@@ -4,6 +4,13 @@ import psutil
 import uuid
 import platform
 import os
+import time
+import threading
+
+# Global variables for network tracking
+previous_net_io = None
+previous_time = None
+network_usage_lock = threading.Lock()
 
 # Function to get or create a persistent token
 def get_persistent_token():
@@ -45,14 +52,37 @@ async def verify_token(request: Request, call_next):
 
 @app.get("/systeminfo")
 def get_system_info():
+    global previous_net_io, previous_time
+    
     # Get disk usage - try different paths for Windows/Linux
     disk_path = "C:\\" if platform.system() == "Windows" else "/"
+    
+    # Get current network stats
+    current_net_io = psutil.net_io_counters()
+    current_time = time.time()
+    
+    network_usage_rate = {"bytes_sent_per_sec": 0, "bytes_recv_per_sec": 0}
+    
+    with network_usage_lock:
+        if previous_net_io is not None and previous_time is not None:
+            time_diff = current_time - previous_time
+            if time_diff > 0:
+                bytes_sent_diff = current_net_io.bytes_sent - previous_net_io.bytes_sent
+                bytes_recv_diff = current_net_io.bytes_recv - previous_net_io.bytes_recv
+                
+                network_usage_rate["bytes_sent_per_sec"] = max(0, bytes_sent_diff / time_diff)
+                network_usage_rate["bytes_recv_per_sec"] = max(0, bytes_recv_diff / time_diff)
+        
+        # Update previous values
+        previous_net_io = current_net_io
+        previous_time = current_time
     
     return {
         "cpu_percent": psutil.cpu_percent(interval=1),
         "memory": psutil.virtual_memory()._asdict(),
         "disk": psutil.disk_usage(disk_path)._asdict(),
-        "network": psutil.net_io_counters()._asdict(),
+        "network": current_net_io._asdict(),
+        "network_usage": network_usage_rate,
         "hostname": platform.node(),
         "system": platform.system()
     }

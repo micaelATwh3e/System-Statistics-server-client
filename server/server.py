@@ -61,9 +61,22 @@ def init_db():
             disk_percent REAL,
             network_bytes_sent INTEGER,
             network_bytes_recv INTEGER,
+            network_sent_per_sec REAL DEFAULT 0,
+            network_recv_per_sec REAL DEFAULT 0,
             FOREIGN KEY (computer_id) REFERENCES computers (id)
         )
     ''')
+    
+    # Add new columns for existing databases (migration)
+    try:
+        cursor.execute('ALTER TABLE stats ADD COLUMN network_sent_per_sec REAL DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute('ALTER TABLE stats ADD COLUMN network_recv_per_sec REAL DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     # Create default admin user if no users exist
     cursor.execute('SELECT COUNT(*) FROM users')
@@ -137,11 +150,16 @@ def fetch_stats_from_computer(computer_id, url, token):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Get network usage rates if available
+        network_sent_per_sec = data.get('network_usage', {}).get('bytes_sent_per_sec', 0)
+        network_recv_per_sec = data.get('network_usage', {}).get('bytes_recv_per_sec', 0)
+        
         cursor.execute('''
             INSERT INTO stats (computer_id, cpu_percent, memory_total, memory_used, 
                              memory_percent, disk_total, disk_used, disk_percent,
-                             network_bytes_sent, network_bytes_recv)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             network_bytes_sent, network_bytes_recv, 
+                             network_sent_per_sec, network_recv_per_sec)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             computer_id,
             data['cpu_percent'],
@@ -152,7 +170,9 @@ def fetch_stats_from_computer(computer_id, url, token):
             data['disk']['used'],
             data['disk']['percent'] if 'percent' in data['disk'] else (data['disk']['used'] / data['disk']['total'] * 100),
             data['network']['bytes_sent'],
-            data['network']['bytes_recv']
+            data['network']['bytes_recv'],
+            network_sent_per_sec,
+            network_recv_per_sec
         ))
         
         # Update computer status
@@ -283,7 +303,9 @@ def get_computer_stats(computer_id):
             'disk_used': row[8],
             'disk_percent': row[9],
             'network_bytes_sent': row[10],
-            'network_bytes_recv': row[11]
+            'network_bytes_recv': row[11],
+            'network_sent_per_sec': row[12] if len(row) > 12 else 0,
+            'network_recv_per_sec': row[13] if len(row) > 13 else 0
         }
     else:
         stats = None
@@ -318,6 +340,44 @@ def get_computer_history(computer_id):
     
     conn.close()
     return jsonify(history)
+
+@app.route('/api/network_graph/<int:computer_id>')
+@login_required
+def get_network_graph_data(computer_id):
+    """Get 24-hour network usage data for graphing"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get network usage data for the last 24 hours
+    cursor.execute('''
+        SELECT timestamp, network_sent_per_sec, network_recv_per_sec,
+               network_bytes_sent, network_bytes_recv
+        FROM stats
+        WHERE computer_id = ? AND timestamp > datetime('now', '-24 hours')
+        ORDER BY timestamp
+    ''', (computer_id,))
+    
+    network_data = []
+    for row in cursor.fetchall():
+        network_data.append({
+            'timestamp': row[0],
+            'sent_per_sec': row[1] or 0,
+            'recv_per_sec': row[2] or 0,
+            'total_sent': row[3] or 0,
+            'total_recv': row[4] or 0
+        })
+    
+    # Get computer name for the graph title
+    cursor.execute('SELECT name FROM computers WHERE id = ?', (computer_id,))
+    computer_name = cursor.fetchone()
+    computer_name = computer_name[0] if computer_name else 'Unknown'
+    
+    conn.close()
+    
+    return jsonify({
+        'computer_name': computer_name,
+        'data': network_data
+    })
 
 @app.route('/api/add_computer', methods=['POST'])
 @login_required
