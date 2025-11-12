@@ -504,22 +504,31 @@
                             data: cpuData,
                             borderColor: '#e74c3c',
                             backgroundColor: 'rgba(231,76,60,0.1)',
-                            borderWidth: 2,
-                            fill: false
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
                         }, {
                             label: 'Memory Usage (%)',
                             data: memoryData,
                             borderColor: '#3498db',
                             backgroundColor: 'rgba(52,152,219,0.1)',
-                            borderWidth: 2,
-                            fill: false
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
                         }, {
                             label: 'Disk Usage (%)',
                             data: diskData,
                             borderColor: '#27ae60',
                             backgroundColor: 'rgba(39,174,96,0.1)',
-                            borderWidth: 2,
-                            fill: false
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
                         }]
                     },
                     options: {
@@ -528,6 +537,11 @@
                         interaction: {
                             intersect: false,
                             mode: 'index'
+                        },
+                        elements: {
+                            line: {
+                                tension: 0.4
+                            }
                         },
                         scales: {
                             x: {
@@ -557,6 +571,10 @@
                                         return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
                                     }
                                 }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'top'
                             }
                         }
                     }
@@ -569,8 +587,15 @@
 
         async function loadNetworkGraph(computerId) {
             try {
+                console.log('Loading network graph for computer:', computerId);
                 const response = await fetch(`/api/network_graph/${computerId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
+                console.log('Network graph data:', result);
                 
                 if (!result.data || result.data.length === 0) {
                     const ctx = document.getElementById('networkChart').getContext('2d');
@@ -629,15 +654,21 @@
                             data: sentData,
                             borderColor: '#e74c3c',
                             backgroundColor: 'rgba(231,76,60,0.1)',
-                            borderWidth: 2,
-                            fill: false
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
                         }, {
                             label: 'Received (bytes/sec)',
                             data: recvData,
                             borderColor: '#3498db',
                             backgroundColor: 'rgba(52,152,219,0.1)',
-                            borderWidth: 2,
-                            fill: false
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
                         }]
                     },
                     options: {
@@ -646,6 +677,11 @@
                         interaction: {
                             intersect: false,
                             mode: 'index'
+                        },
+                        elements: {
+                            line: {
+                                tension: 0.4
+                            }
                         },
                         scales: {
                             x: {
@@ -674,13 +710,121 @@
                                         return context.dataset.label + ': ' + formatBytes(context.parsed.y) + '/s';
                                     }
                                 }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'top'
                             }
                         }
                     }
                 });
             } catch (error) {
-                console.error('Error loading network graph:', error);
-                alert('Error loading network graph: ' + error.message);
+                console.error('Error loading network graph from dedicated endpoint:', error);
+                console.log('Trying fallback to history endpoint...');
+                
+                // Fallback to history endpoint
+                try {
+                    const fallbackResponse = await fetch(`/api/history/${computerId}?hours=24`);
+                    const fallbackData = await fallbackResponse.json();
+                    
+                    if (fallbackData && fallbackData.length > 0) {
+                        const labels = fallbackData.map(item => {
+                            const date = new Date(item.timestamp);
+                            return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        });
+                        
+                        const sentData = fallbackData.map(item => item.network_sent_per_sec || 0);
+                        const recvData = fallbackData.map(item => item.network_recv_per_sec || 0);
+                        
+                        const ctx = document.getElementById('networkChart').getContext('2d');
+                        
+                        if (networkChart) {
+                            networkChart.destroy();
+                        }
+                        
+                        networkChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: 'Sent (bytes/sec)',
+                                    data: sentData,
+                                    borderColor: '#e74c3c',
+                                    backgroundColor: 'rgba(231,76,60,0.1)',
+                                    borderWidth: 3,
+                                    fill: false,
+                                    tension: 0.4,
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6
+                                }, {
+                                    label: 'Received (bytes/sec)',
+                                    data: recvData,
+                                    borderColor: '#3498db',
+                                    backgroundColor: 'rgba(52,152,219,0.1)',
+                                    borderWidth: 3,
+                                    fill: false,
+                                    tension: 0.4,
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {
+                                    intersect: false,
+                                    mode: 'index'
+                                },
+                                elements: {
+                                    line: {
+                                        tension: 0.4
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        title: {
+                                            display: true,
+                                            text: 'Time'
+                                        }
+                                    },
+                                    y: {
+                                        beginAtZero: true,
+                                        title: {
+                                            display: true,
+                                            text: 'Bytes/Second'
+                                        },
+                                        ticks: {
+                                            callback: function(value) {
+                                                return formatBytes(value) + '/s';
+                                            }
+                                        }
+                                    }
+                                },
+                                plugins: {
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                return context.dataset.label + ': ' + formatBytes(context.parsed.y) + '/s';
+                                            }
+                                        }
+                                    },
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    }
+                                }
+                            }
+                        });
+                        
+                        console.log('Network graph loaded successfully from fallback endpoint');
+                    } else {
+                        console.error('No data available from fallback endpoint either');
+                        alert('No network data available for this computer');
+                    }
+                } catch (fallbackError) {
+                    console.error('Error loading network graph from fallback:', fallbackError);
+                    alert('Error loading network graph: ' + error.message);
+                }
             }
         }
         
