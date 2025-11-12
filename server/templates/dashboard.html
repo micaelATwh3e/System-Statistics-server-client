@@ -460,11 +460,18 @@
                                 data: [0],
                                 borderColor: '#999',
                                 backgroundColor: 'rgba(153,153,153,0.1)',
+                                pointRadius: 0
                             }]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            elements: {
+                                point: {
+                                    radius: 0,
+                                    hoverRadius: 0
+                                }
+                            },
                             scales: {
                                 y: {
                                     beginAtZero: true,
@@ -541,6 +548,10 @@
                         elements: {
                             line: {
                                 tension: 0.4
+                            },
+                            point: {
+                                radius: 0,
+                                hoverRadius: 4
                             }
                         },
                         scales: {
@@ -612,11 +623,18 @@
                                 data: [0],
                                 borderColor: '#999',
                                 backgroundColor: 'rgba(153,153,153,0.1)',
+                                pointRadius: 0
                             }]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            elements: {
+                                point: {
+                                    radius: 0,
+                                    hoverRadius: 0
+                                }
+                            },
                             scales: {
                                 y: {
                                     beginAtZero: true,
@@ -681,6 +699,10 @@
                         elements: {
                             line: {
                                 tension: 0.4
+                            },
+                            point: {
+                                radius: 0,
+                                hoverRadius: 4
                             }
                         },
                         scales: {
@@ -778,6 +800,10 @@
                                 elements: {
                                     line: {
                                         tension: 0.4
+                                    },
+                                    point: {
+                                        radius: 0,
+                                        hoverRadius: 4
                                     }
                                 },
                                 scales: {
