@@ -111,6 +111,24 @@
         .status-offline {
             background-color: #e74c3c;
         }
+        .delete-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+            margin-left: 10px;
+            transition: background-color 0.2s;
+        }
+        .delete-btn:hover {
+            background-color: #c0392b;
+        }
+        .computer-actions {
+            display: flex;
+            align-items: center;
+        }
         .alert {
             padding: 15px;
             border-radius: 5px;
@@ -242,8 +260,13 @@
                                     Last seen: ${formatLastSeen(computer.last_seen)}
                                 </div>
                             </div>
-                            <div class="status-badge ${statusClass}">
-                                ${computer.status.toUpperCase()}
+                            <div class="computer-actions">
+                                <div class="status-badge ${statusClass}">
+                                    ${computer.status.toUpperCase()}
+                                </div>
+                                <button class="delete-btn" onclick="deleteComputer(${computer.id}, '${computer.name}')">
+                                    Delete
+                                </button>
                             </div>
                         </div>
                     `;
@@ -289,6 +312,30 @@
                 showAlert('Network error: ' + error.message, 'error');
             }
         });
+
+        // Delete computer function
+        async function deleteComputer(computerId, computerName) {
+            if (!confirm(`Are you sure you want to delete "${computerName}"?\n\nThis will permanently remove the computer and all its historical data.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/remove_computer/${computerId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert(result.message, 'success');
+                    loadComputers(); // Refresh the list
+                } else {
+                    showAlert(result.error || 'Failed to delete computer', 'error');
+                }
+            } catch (error) {
+                showAlert('Network error: ' + error.message, 'error');
+            }
+        }
 
         // Load computers on page load
         loadComputers();

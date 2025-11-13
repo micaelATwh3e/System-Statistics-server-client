@@ -63,8 +63,6 @@ def init_db():
             network_bytes_recv INTEGER,
             network_sent_per_sec REAL DEFAULT 0,
             network_recv_per_sec REAL DEFAULT 0,
-            uptime_seconds REAL DEFAULT 0,
-            boot_time REAL DEFAULT 0,
             FOREIGN KEY (computer_id) REFERENCES computers (id)
         )
     ''')
@@ -80,15 +78,20 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
     
-    try:
-        cursor.execute('ALTER TABLE stats ADD COLUMN uptime_seconds REAL DEFAULT 0')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-        
-    try:
-        cursor.execute('ALTER TABLE stats ADD COLUMN boot_time REAL DEFAULT 0')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    # Create processes table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS processes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            computer_id INTEGER,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            pid INTEGER,
+            name TEXT,
+            cpu_percent REAL,
+            memory_percent REAL,
+            create_time REAL,
+            FOREIGN KEY (computer_id) REFERENCES computers (id)
+        )
+    ''')
     
     # Create default admin user if no users exist
     cursor.execute('SELECT COUNT(*) FROM users')
@@ -170,9 +173,8 @@ def fetch_stats_from_computer(computer_id, url, token):
             INSERT INTO stats (computer_id, cpu_percent, memory_total, memory_used, 
                              memory_percent, disk_total, disk_used, disk_percent,
                              network_bytes_sent, network_bytes_recv, 
-                             network_sent_per_sec, network_recv_per_sec,
-                             uptime_seconds, boot_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             network_sent_per_sec, network_recv_per_sec)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             computer_id,
             data['cpu_percent'],
@@ -185,10 +187,35 @@ def fetch_stats_from_computer(computer_id, url, token):
             data['network']['bytes_sent'],
             data['network']['bytes_recv'],
             network_sent_per_sec,
-            network_recv_per_sec,
-            data.get('uptime_seconds', 0),
-            data.get('boot_time', 0)
+            network_recv_per_sec
         ))
+        
+        # Store process information if available
+        if 'top_processes' in data and data['top_processes']:
+            # Clear old processes for this computer (keep only last 1000 records)
+            cursor.execute('''
+                DELETE FROM processes 
+                WHERE computer_id = ? AND id NOT IN (
+                    SELECT id FROM processes 
+                    WHERE computer_id = ? 
+                    ORDER BY timestamp DESC 
+                    LIMIT 1000
+                )
+            ''', (computer_id, computer_id))
+            
+            # Insert new process data
+            for proc in data['top_processes']:
+                cursor.execute('''
+                    INSERT INTO processes (computer_id, pid, name, cpu_percent, memory_percent, create_time)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    computer_id,
+                    proc.get('pid', 0),
+                    proc.get('name', 'Unknown'),
+                    proc.get('cpu_percent', 0),
+                    proc.get('memory_percent', 0),
+                    proc.get('create_time', 0)
+                ))
         
         # Update computer status
         cursor.execute('''
@@ -320,9 +347,7 @@ def get_computer_stats(computer_id):
             'network_bytes_sent': row[10],
             'network_bytes_recv': row[11],
             'network_sent_per_sec': row[12] if len(row) > 12 else 0,
-            'network_recv_per_sec': row[13] if len(row) > 13 else 0,
-            'uptime_seconds': row[14] if len(row) > 14 else 0,
-            'boot_time': row[15] if len(row) > 15 else 0
+            'network_recv_per_sec': row[13] if len(row) > 13 else 0
         }
     else:
         stats = None
@@ -340,8 +365,7 @@ def get_computer_history(computer_id):
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT timestamp, cpu_percent, memory_percent, disk_percent, 
-               network_sent_per_sec, network_recv_per_sec, uptime_seconds
+        SELECT timestamp, cpu_percent, memory_percent, disk_percent
         FROM stats
         WHERE computer_id = ? AND timestamp > datetime('now', '-{} hours')
         ORDER BY timestamp
@@ -353,10 +377,7 @@ def get_computer_history(computer_id):
             'timestamp': row[0],
             'cpu_percent': row[1],
             'memory_percent': row[2],
-            'disk_percent': row[3],
-            'network_sent_per_sec': row[4] if len(row) > 4 else 0,
-            'network_recv_per_sec': row[5] if len(row) > 5 else 0,
-            'uptime_seconds': row[6] if len(row) > 6 else 0
+            'disk_percent': row[3]
         })
     
     conn.close()
@@ -400,6 +421,82 @@ def get_network_graph_data(computer_id):
         'data': network_data
     })
 
+@app.route('/api/cpu_graph/<int:computer_id>')
+@login_required
+def get_cpu_graph_data(computer_id):
+    """Get 24-hour CPU usage data for graphing"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get CPU usage data for the last 24 hours
+    cursor.execute('''
+        SELECT timestamp, cpu_percent
+        FROM stats
+        WHERE computer_id = ? AND timestamp > datetime('now', '-24 hours')
+        ORDER BY timestamp
+    ''', (computer_id,))
+    
+    cpu_data = []
+    for row in cursor.fetchall():
+        cpu_data.append({
+            'timestamp': row[0],
+            'cpu_percent': row[1] or 0
+        })
+    
+    # Get computer name for the graph title
+    cursor.execute('SELECT name FROM computers WHERE id = ?', (computer_id,))
+    computer_name = cursor.fetchone()
+    computer_name = computer_name[0] if computer_name else 'Unknown'
+    
+    conn.close()
+    
+    return jsonify({
+        'computer_name': computer_name,
+        'data': cpu_data
+    })
+
+@app.route('/api/processes/<int:computer_id>')
+@login_required
+def get_computer_processes(computer_id):
+    """Get current top processes for a computer"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get the latest processes for this computer
+    cursor.execute('''
+        SELECT pid, name, cpu_percent, memory_percent, create_time
+        FROM processes
+        WHERE computer_id = ? AND timestamp > datetime('now', '-5 minutes')
+        ORDER BY timestamp DESC, cpu_percent DESC
+        LIMIT 20
+    ''', (computer_id,))
+    
+    processes = []
+    for row in cursor.fetchall():
+        # Calculate uptime from create_time
+        uptime_seconds = time.time() - row[4] if row[4] else 0
+        uptime_hours = uptime_seconds / 3600
+        
+        processes.append({
+            'pid': row[0],
+            'name': row[1],
+            'cpu_percent': round(row[2], 1),
+            'memory_percent': round(row[3], 2),
+            'uptime_hours': round(uptime_hours, 1)
+        })
+    
+    # Get computer name
+    cursor.execute('SELECT name FROM computers WHERE id = ?', (computer_id,))
+    computer_name = cursor.fetchone()
+    computer_name = computer_name[0] if computer_name else 'Unknown'
+    
+    conn.close()
+    
+    return jsonify({
+        'computer_name': computer_name,
+        'processes': processes
+    })
+
 @app.route('/api/add_computer', methods=['POST'])
 @login_required
 def add_computer_endpoint():
@@ -417,6 +514,40 @@ def add_computer_endpoint():
         return jsonify({'message': 'Computer added successfully'})
     else:
         return jsonify({'error': 'Failed to add computer'}), 500
+
+@app.route('/api/remove_computer/<int:computer_id>', methods=['DELETE'])
+@login_required
+def remove_computer_endpoint(computer_id):
+    """Remove a computer from monitoring"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if computer exists
+        cursor.execute('SELECT name FROM computers WHERE id = ?', (computer_id,))
+        computer = cursor.fetchone()
+        
+        if not computer:
+            conn.close()
+            return jsonify({'error': 'Computer not found'}), 404
+        
+        computer_name = computer[0]
+        
+        # Delete related stats and processes first (foreign key constraint)
+        cursor.execute('DELETE FROM stats WHERE computer_id = ?', (computer_id,))
+        cursor.execute('DELETE FROM processes WHERE computer_id = ?', (computer_id,))
+        
+        # Delete the computer
+        cursor.execute('DELETE FROM computers WHERE id = ?', (computer_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': f'Computer "{computer_name}" removed successfully'})
+        
+    except Exception as e:
+        print(f"Error removing computer {computer_id}: {e}")
+        return jsonify({'error': 'Failed to remove computer'}), 500
 
 @app.route('/change_password', methods=['GET', 'POST'])
 @login_required

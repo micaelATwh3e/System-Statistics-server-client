@@ -77,9 +77,30 @@ def get_system_info():
         previous_net_io = current_net_io
         previous_time = current_time
     
-    # Get system uptime
-    boot_time = psutil.boot_time()
-    uptime_seconds = current_time - boot_time
+    # Get top 20 processes by CPU usage
+    try:
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'create_time']):
+            try:
+                pinfo = proc.info
+                if pinfo['cpu_percent'] is not None:
+                    processes.append({
+                        'pid': pinfo['pid'],
+                        'name': pinfo['name'] or 'Unknown',
+                        'cpu_percent': pinfo['cpu_percent'],
+                        'memory_percent': round(pinfo['memory_percent'] or 0, 2),
+                        'create_time': pinfo['create_time']
+                    })
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        
+        # Sort by CPU usage and get top 20
+        processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
+        top_processes = processes[:20]
+        
+    except Exception as e:
+        print(f"Error getting processes: {e}")
+        top_processes = []
     
     return {
         "cpu_percent": psutil.cpu_percent(interval=1),
@@ -87,8 +108,7 @@ def get_system_info():
         "disk": psutil.disk_usage(disk_path)._asdict(),
         "network": current_net_io._asdict(),
         "network_usage": network_usage_rate,
-        "uptime_seconds": uptime_seconds,
-        "boot_time": boot_time,
+        "top_processes": top_processes,
         "hostname": platform.node(),
         "system": platform.system()
     }
