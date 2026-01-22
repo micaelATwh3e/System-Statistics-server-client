@@ -1,3 +1,4 @@
+![Visitors](https://stats.wh3e.se/badge/micaelATwh3e/System-Statistics-server-client)
 # 📊 Distributed System Monitor
 
 A comprehensive distributed system monitoring solution with a centralized Flask dashboard server and lightweight FastAPI clients for real-time system statistics collection.
